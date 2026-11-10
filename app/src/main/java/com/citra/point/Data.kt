@@ -1,9 +1,17 @@
 package com.citra.point
 
+import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.*
-import androidx.lifecycle.ViewModel
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 data class ProductCategory(val id: String, val name: String)
@@ -14,7 +22,7 @@ data class Product(
     val categoryName get() = Sample.categories.first { it.id == categoryId }.name
 }
 
-/** Data contoh. Ganti dengan Room / Retrofit saat backend siap. */
+/** Data contoh. Ganti dengan Retrofit (REST API) saat backend siap. */
 object Sample {
     val categories = listOf(
         ProductCategory("selempang", "Selempang"), ProductCategory("plakat", "Plakat"),
@@ -30,34 +38,77 @@ object Sample {
     }
 }
 
-class AppViewModel : ViewModel() {
-    var isLoading by mutableStateOf(true); private set
-    var isOffline by mutableStateOf(false); private set   // set true saat gagal memuat dari API
-    var darkTheme by mutableStateOf(false)
-    var english by mutableStateOf(false)
-    var query by mutableStateOf("")
-    var chip by mutableStateOf<String?>(null)
-    val favorites = mutableStateListOf<Int>()
-    val history = mutableStateListOf("piagam")
+// ---------------------------------------------------------------- Penyimpanan internal (DataStore)
+// Dipakai bersama oleh semua Activity, jadi favorit / tema / bahasa / riwayat tidak hilang antar layar
+// maupun saat aplikasi ditutup. (Bisa diganti Room untuk favorit kalau dosen meminta.)
+private val Context.citraStore by preferencesDataStore(name = "citra_prefs")
 
-    init { load() }
+class Prefs(private val ctx: Context) {
+    private val FAV = stringSetPreferencesKey("favorites")
+    private val DARK = booleanPreferencesKey("dark")
+    private val EN = booleanPreferencesKey("english")
+    private val HIST = stringPreferencesKey("history")
 
-    fun load() = viewModelScope.launch {
-        isLoading = true; isOffline = false
-        delay(1500)                 // simulasi request jaringan
-        isLoading = false
+    val favorites = ctx.citraStore.data.map { p -> (p[FAV] ?: emptySet()).mapNotNull { it.toIntOrNull() }.sorted() }
+    val dark = ctx.citraStore.data.map { it[DARK] ?: false }
+    val english = ctx.citraStore.data.map { it[EN] ?: false }
+    val history = ctx.citraStore.data.map { p ->
+        p[HIST]?.split("\n")?.filter { it.isNotBlank() } ?: listOf("piagam")
     }
 
-    fun toggleFav(id: Int) { if (!favorites.remove(id)) favorites.add(id) }
+    suspend fun toggleFav(id: Int) {
+        ctx.citraStore.edit { p ->
+            val cur = p[FAV] ?: emptySet()
+            val s = id.toString()
+            p[FAV] = if (s in cur) cur - s else cur + s
+        }
+    }
+    suspend fun setDark(v: Boolean) { ctx.citraStore.edit { it[DARK] = v } }
+    suspend fun setEnglish(v: Boolean) { ctx.citraStore.edit { it[EN] = v } }
+    suspend fun setHistory(list: List<String>) { ctx.citraStore.edit { it[HIST] = list.joinToString("\n") } }
+}
+
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+    private val prefs = Prefs(app)
+
+    var isLoading by mutableStateOf(true); private set
+    var isOffline by mutableStateOf(false); private set   // set true saat gagal memuat dari API
+    var query by mutableStateOf("")
+    var chip by mutableStateOf<String?>(null)
+
+    var favorites by mutableStateOf<List<Int>>(emptyList()); private set
+    var darkTheme by mutableStateOf(false); private set
+    var english by mutableStateOf(false); private set
+    var history by mutableStateOf<List<String>>(emptyList()); private set
+
+    init {
+        viewModelScope.launch { prefs.favorites.collect { favorites = it } }
+        viewModelScope.launch { prefs.dark.collect { darkTheme = it } }
+        viewModelScope.launch { prefs.english.collect { english = it } }
+        viewModelScope.launch { prefs.history.collect { history = it } }
+        load()
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            isLoading = true; isOffline = false
+            delay(1500)                 // simulasi request jaringan
+            isLoading = false
+        }
+    }
+
+    fun toggleFav(id: Int) { viewModelScope.launch { prefs.toggleFav(id) } }
+    fun setDark(v: Boolean) { viewModelScope.launch { prefs.setDark(v) } }
+    fun changeLanguage(v: Boolean) { viewModelScope.launch { prefs.setEnglish(v) } }
 
     fun addHistory(q: String) {
         if (q.isBlank()) return
-        history.remove(q); history.add(0, q)
-        while (history.size > 5) history.removeLast()
+        val next = (listOf(q) + history.filter { it != q }).take(5)
+        viewModelScope.launch { prefs.setHistory(next) }
     }
 
     fun filtered() = Sample.products.filter { p ->
         (chip == null || p.categoryId == chip) &&
-            (query.isBlank() || p.name.contains(query, true) || p.categoryName.contains(query, true))
+                (query.isBlank() || p.name.contains(query, true) || p.categoryName.contains(query, true))
     }
 }
