@@ -6,7 +6,7 @@ import androidx.activity.ComponentActivity
 class ProductDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val id = intent.getIntExtra(EXTRA_PRODUCT_ID, 1)
+        val id = intent.getStringExtra(EXTRA_PRODUCT_ID).orEmpty()
         setCitraContent("home") { ProductDetailScreen(id, it) }
     }
 }

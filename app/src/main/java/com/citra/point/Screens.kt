@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -37,6 +38,7 @@ const val MAPS_URL = "geo:0,0?q=Citra+Productions"
 @Composable
 fun HomeScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
+    val skeleton = vm.isLoading && vm.products.isEmpty()
     Column(Modifier.fillMaxSize()) {
         LogoBar()
         Column(
@@ -51,20 +53,28 @@ fun HomeScreen(vm: AppViewModel) {
                         trackColor = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
-            if (vm.isOffline) OfflineBanner { vm.load() }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionTitle("Kategori Produk")
-                if (vm.isLoading) SkeletonHome() else CategoryGrid(null) { ctx.openCategory(it) }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    SectionTitle("Produk Unggulan")
-                    Text("Lihat semua", fontSize = 12.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { ctx.openTab("search") })
+            if (vm.isOffline && vm.products.isNotEmpty()) OfflineBanner { vm.load() }
+            if (!skeleton && vm.products.isEmpty()) {
+                EmptyState(
+                    Icons.Default.WifiOff, "Tidak dapat memuat data",
+                    "Periksa koneksi internet kamu, lalu coba lagi.", "Coba lagi", { vm.load() },
+                    Modifier.padding(top = 80.dp)
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionTitle("Kategori Produk")
+                    if (skeleton) SkeletonHome() else CategoryGrid(vm.categories, null) { ctx.openCategory(it) }
                 }
-                if (vm.isLoading) SkeletonProducts()
-                else ProductGrid(Sample.products.take(4), vm.favorites, vm::toggleFav, gap = 8.dp) {
-                    ctx.openProduct(it.id)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        SectionTitle("Produk Unggulan")
+                        Text("Lihat semua", fontSize = 12.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { ctx.openTab("search") })
+                    }
+                    if (skeleton) SkeletonProducts()
+                    else ProductGrid(vm.products.take(4), vm.favorites, vm::toggleFav, gap = 8.dp) {
+                        ctx.openProduct(it.id)
+                    }
                 }
             }
         }
@@ -114,11 +124,12 @@ fun SearchScreen(vm: AppViewModel, onOpenInput: () -> Unit) {
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CitraChip("Semua", vm.chip == null) { vm.chip = null }
-                    Sample.categories.forEach { c -> CitraChip(c.name, vm.chip == c.id) { vm.chip = c.id } }
+                    vm.categories.forEach { c -> CitraChip(c.name, vm.chip == c.id) { vm.chip = c.id } }
                 }
             }
             when {
-                vm.isOffline -> EmptyState(
+                vm.isLoading && vm.products.isEmpty() -> SkeletonProducts()
+                vm.isOffline && vm.products.isEmpty() -> EmptyState(
                     Icons.Default.WifiOff, "Butuh koneksi untuk mencari",
                     "Periksa koneksi internet kamu, lalu coba lagi.", "Coba lagi", { vm.load() },
                     Modifier.padding(top = 150.dp)
@@ -186,14 +197,14 @@ fun CategoryScreen(initialId: String, vm: AppViewModel) {
     val ctx = LocalContext.current
     var id by remember { mutableStateOf(initialId) }
     var page by remember(id) { mutableIntStateOf(1) }
-    val list = Sample.products.filter { it.categoryId == id }
+    val list = vm.products.filter { it.categoryId == id }
     Column(Modifier.fillMaxSize()) {
         LogoBar()
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             BackRow("Kembali", strong = true) { ctx.finishActivity() }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle("Kategori Produk")
-                CategoryGrid(id) { id = it }
+                CategoryGrid(vm.categories, id) { id = it }
                 ProductGrid(pageItems(list, page), vm.favorites, vm::toggleFav) { ctx.openProduct(it.id) }
                 if (list.isNotEmpty()) Pagination(page, pageCount(list.size)) { page = it }
                 Spacer(Modifier.height(8.dp))
@@ -204,11 +215,27 @@ fun CategoryScreen(initialId: String, vm: AppViewModel) {
 
 // ================================================================ DETAIL PRODUK
 @Composable
-fun ProductDetailScreen(id: Int, vm: AppViewModel) {
+fun ProductDetailScreen(id: String, vm: AppViewModel) {
+    val ctx = LocalContext.current
+    val p = vm.products.firstOrNull { it.id == id }
+    if (p == null) {
+        Column(Modifier.fillMaxSize()) {
+            LogoBar()
+            BackRow("Kembali", strong = true) { ctx.finishActivity() }
+            if (vm.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(20.dp))
+            else Text("Produk tidak ditemukan", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else {
+        ProductDetailContent(p, vm)
+    }
+}
+
+@Composable
+private fun ProductDetailContent(p: Product, vm: AppViewModel) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
-    val p = Sample.products.first { it.id == id }
-    val pager = rememberPagerState(pageCount = { 6 })
+    val n = maxOf(1, p.photos.size)
+    val pager = rememberPagerState(pageCount = { n })
     val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -218,21 +245,25 @@ fun ProductDetailScreen(id: Int, vm: AppViewModel) {
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box {
-                            HorizontalPager(pager) {
-                                ProductImage(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(8.dp)))
+                            HorizontalPager(pager) { i ->
+                                ProductImage(p.photos.getOrNull(i)?.url,
+                                    Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(8.dp)))
                             }
-                            Text("${pager.currentPage + 1}/6 ${p.name.lowercase()}", fontSize = 12.sp, lineHeight = 20.sp,
-                                color = NavyDeep,
+                            val alt = p.photos.getOrNull(pager.currentPage)?.alt.orEmpty().ifBlank { p.name.lowercase() }
+                            Text("${pager.currentPage + 1}/$n $alt", fontSize = 12.sp, lineHeight = 20.sp,
+                                color = NavyDeep, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
                                     .background(Color.White.copy(alpha = 0.92f), RoundedCornerShape(4.dp))
                                     .padding(horizontal = 16.dp))
                         }
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            repeat(6) { i ->
-                                val shape = RoundedCornerShape(4.dp)
-                                ProductImage(Modifier.size(44.dp).clip(shape)
-                                    .border(if (i == pager.currentPage) 1.dp else 0.dp, cs.primary, shape)
-                                    .clickable { scope.launch { pager.animateScrollToPage(i) } })
+                        if (p.photos.size > 1) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                repeat(n) { i ->
+                                    val shape = RoundedCornerShape(4.dp)
+                                    ProductImage(p.photos.getOrNull(i)?.url, Modifier.size(44.dp).clip(shape)
+                                        .border(if (i == pager.currentPage) 1.dp else 0.dp, cs.primary, shape)
+                                        .clickable { scope.launch { pager.animateScrollToPage(i) } })
+                                }
                             }
                         }
                     }
@@ -278,7 +309,7 @@ private fun SpecRow(label: String, value: String) = Row(Modifier.padding(vertica
 fun FavoritesScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
     var page by remember { mutableIntStateOf(1) }
-    val list = Sample.products.filter { it.id in vm.favorites }
+    val list = vm.products.filter { it.id in vm.favorites }
     if (page > pageCount(list.size)) page = pageCount(list.size)
     Column(Modifier.fillMaxSize()) {
         LogoBar()
@@ -430,16 +461,18 @@ fun ContactScreen() {
 
 // ================================================================ FAQ
 @Composable
-fun FaqScreen() {
+fun FaqScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
-    val faqs = listOf(
+    val defaultFaqs = listOf(
         "Bagaimana cara memesan produk?" to "Pilih produk di katalog, lalu buka halaman detail. Gunakan tombol WhatsApp untuk menanyakan ketersediaan dan mendiskusikan pesanan dengan tim Citra.",
         "Di mana saya bisa melihat harga produk?" to "Rentang harga tampil di kartu produk dan halaman detail.",
         "Bisakah produk memakai desain saya?" to "Bisa. Kirim desain Anda melalui WhatsApp.",
         "Bagaimana cara menanyakan pengiriman?" to "Hubungi admin melalui WhatsApp untuk info ongkos dan estimasi kirim.",
         "Bagaimana cara mengecek status pesanan?" to "Hubungi admin melalui WhatsApp dengan menyebutkan nama pemesan."
     )
+    // FAQ diambil dari API; kalau belum ada data (offline & belum pernah dimuat) pakai daftar bawaan
+    val faqs = if (vm.faqs.isNotEmpty()) vm.faqs.map { it.question to it.answer } else defaultFaqs
     Column(Modifier.fillMaxSize()) {
         LogoBar()
         Column(Modifier.verticalScroll(rememberScrollState())) {
