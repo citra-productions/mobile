@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.graphics.drawable.ColorDrawable
 
 const val EXTRA_PRODUCT_ID = "product_id"
 const val EXTRA_CATEGORY_ID = "category_id"
@@ -69,11 +70,17 @@ fun CitraScaffold(selected: String, content: @Composable () -> Unit) {
     ) { pad -> Box(Modifier.fillMaxSize().padding(pad)) { content() } }
 }
 
+fun ComponentActivity.paintWindow() {
+    UiPrefs.ensureLoaded(Prefs(applicationContext))
+    window.setBackgroundDrawable(ColorDrawable(if (UiPrefs.dark) 0xFF0F1320.toInt() else 0xFFFFFFFF.toInt()))
+}
+
 /** Dipakai semua Activity: edge-to-edge, ViewModel, tema, dan navbar. */
 fun ComponentActivity.setCitraContent(tab: String, content: @Composable (AppViewModel) -> Unit) {
     enableEdgeToEdge()
+    paintWindow()
     setContent {
         val vm: AppViewModel = viewModel()
-        CitraTheme(vm.darkTheme) { CitraScaffold(tab) { content(vm) } }
+        CitraTheme(vm.darkTheme, vm.english) { CitraScaffold(tab) { content(vm) } }
     }
 }
