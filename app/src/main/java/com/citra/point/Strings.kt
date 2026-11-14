@@ -62,6 +62,8 @@ val Translations: Map<String, String> = mapOf(
     // Navbar & umum
     "Favorit" to "Favorites",
     "Kembali" to "Back",
+    "Hubungi kami" to "Contact us",
+    "Tidak dapat memuat data" to "Unable to load data",
     "Kembali ke Others Activity" to "Back to Others",
     "Coba lagi" to "Try again",
     "Semua" to "All",

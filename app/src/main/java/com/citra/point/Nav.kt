@@ -34,7 +34,7 @@ fun Context.findActivity(): Activity? {
 fun Context.finishActivity() { findActivity()?.finish() }
 
 // ---- Explicit Intent antar-Activity ----
-fun Context.openProduct(id: Int) =
+fun Context.openProduct(id: String) =
     startActivity(Intent(this, ProductDetailActivity::class.java).putExtra(EXTRA_PRODUCT_ID, id))
 
 fun Context.openCategory(id: String) =

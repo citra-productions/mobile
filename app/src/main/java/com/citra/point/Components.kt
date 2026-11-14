@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 
 fun Context.openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
@@ -130,11 +132,15 @@ fun BackRow(text: String, strong: Boolean = false, onBack: () -> Unit) {
 fun SectionTitle(text: String) =
     Text(text, fontSize = 21.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
 
-/** Placeholder foto produk. Ganti dengan Image(painterResource(...)) atau Coil AsyncImage dari API. */
+/** Foto produk dari URL API (Coil). Kalau URL kosong, tampil placeholder abu-abu. */
 @Composable
-fun ProductImage(modifier: Modifier = Modifier) {
-    Box(modifier.background(Color(0xFF8D8478)), contentAlignment = Alignment.Center) {
-        Icon(Icons.Default.EmojiEvents, null, Modifier.fillMaxSize(0.5f), tint = Color.White.copy(alpha = 0.8f))
+fun ProductImage(url: String?, modifier: Modifier = Modifier) {
+    if (url.isNullOrBlank()) {
+        Box(modifier.background(Color(0xFF8D8478)), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.EmojiEvents, null, Modifier.fillMaxSize(0.5f), tint = Color.White.copy(alpha = 0.8f))
+        }
+    } else {
+        AsyncImage(model = url, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
     }
 }
 
@@ -148,7 +154,7 @@ fun ProductCard(p: Product, fav: Boolean, onFav: () -> Unit, onClick: () -> Unit
     ) {
         Column(Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp))) {
-                ProductImage(Modifier.fillMaxSize())
+                ProductImage(p.photos.firstOrNull()?.url, Modifier.fillMaxSize())
                 IconButton(onFav, Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 3.dp).size(32.dp)) {
                     Icon(if (fav) Icons.Filled.Star else Icons.Outlined.StarBorder, "Favorit",
                         Modifier.size(24.dp), tint = Color.White)
@@ -167,7 +173,7 @@ fun ProductCard(p: Product, fav: Boolean, onFav: () -> Unit, onClick: () -> Unit
 /** Grid 2 kolom tanpa LazyGrid, jadi aman di dalam Column yang bisa di-scroll. */
 @Composable
 fun ProductGrid(
-    list: List<Product>, favorites: List<Int>, onFav: (Int) -> Unit,
+    list: List<Product>, favorites: List<String>, onFav: (String) -> Unit,
     gap: Dp = 12.dp, onOpen: (Product) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -194,25 +200,43 @@ fun CategoryCard(c: ProductCategory, selected: Boolean, onClick: () -> Unit, mod
             Modifier.fillMaxWidth().padding(vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Placeholder foto kategori (lingkaran 50dp). Ganti dengan foto dari API / export Figma.
-            Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF9A9186)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Category, null, Modifier.size(24.dp), tint = Color.White.copy(alpha = 0.85f))
+            // Foto kategori: res/drawable/cat_<slug>.png (tanda "-" jadi "_"). Kalau belum ada, tampil placeholder.
+            val ctx = LocalContext.current
+            val resId = remember(c.id) { ctx.resources.getIdentifier("cat_" + c.id.replace("-", "_"), "drawable", ctx.packageName) }
+            if (resId != 0) {
+                Image(painterResource(resId), null, Modifier.size(50.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+            } else {
+                Box(Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF9A9186)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Category, null, Modifier.size(24.dp), tint = Color.White.copy(alpha = 0.85f))
+                }
             }
             Text(c.name, fontSize = 16.sp, lineHeight = 24.sp, maxLines = 1)
         }
     }
 }
 
+/** Layout Figma: baris 1 = 3 kartu, baris 2 = 1 kartu + 1 kartu lebar (2x), sisanya 3 per baris. */
 @Composable
-fun CategoryGrid(selected: String?, onClick: (String) -> Unit) {
-    val cs = Sample.categories
+fun CategoryGrid(categories: List<ProductCategory>, selected: String?, onClick: (String) -> Unit) {
+    val first = categories.take(3)
+    val rest = categories.drop(3)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            cs.take(3).forEach { c -> CategoryCard(c, c.id == selected, { onClick(c.id) }, Modifier.weight(1f)) }
+            first.forEach { c -> CategoryCard(c, c.id == selected, { onClick(c.id) }, Modifier.weight(1f)) }
+            repeat(3 - first.size) { Spacer(Modifier.weight(1f)) }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CategoryCard(cs[3], cs[3].id == selected, { onClick(cs[3].id) }, Modifier.weight(1f))
-            CategoryCard(cs[4], cs[4].id == selected, { onClick(cs[4].id) }, Modifier.weight(2f))
+        if (rest.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CategoryCard(rest[0], rest[0].id == selected, { onClick(rest[0].id) }, Modifier.weight(1f))
+                if (rest.size > 1) CategoryCard(rest[1], rest[1].id == selected, { onClick(rest[1].id) }, Modifier.weight(2f))
+                else Spacer(Modifier.weight(2f))
+            }
+            rest.drop(2).chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { c -> CategoryCard(c, c.id == selected, { onClick(c.id) }, Modifier.weight(1f)) }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
         }
     }
 }
