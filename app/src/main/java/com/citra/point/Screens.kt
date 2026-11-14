@@ -130,7 +130,8 @@ fun SearchScreen(vm: AppViewModel, onOpenInput: () -> Unit) {
                 )
                 else -> {
                     if (vm.query.isNotBlank()) {
-                        Text("Menampilkan ${list.size} produk", fontSize = 12.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant)
+                        Text(tr("Menampilkan ${list.size} produk", "Showing ${list.size} products"),
+                            fontSize = 12.sp, lineHeight = 14.sp, color = cs.onSurfaceVariant)
                     }
                     ProductGrid(pageItems(list, page), vm.favorites, vm::toggleFav) { ctx.openProduct(it.id) }
                     Pagination(page, pageCount(list.size)) { page = it }
@@ -293,8 +294,11 @@ fun FavoritesScreen(vm: AppViewModel) {
                 }
             } else {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Menampilkan ${list.size} dari ${list.size} produk yang di favoritkan", fontSize = 12.sp,
-                        lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        tr("Menampilkan ${list.size} dari ${list.size} produk yang di favoritkan",
+                            "Showing ${list.size} of ${list.size} favorite products"),
+                        fontSize = 12.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface
+                    )
                     ProductGrid(pageItems(list, page), vm.favorites, vm::toggleFav, gap = 8.dp) { ctx.openProduct(it.id) }
                     Pagination(page, pageCount(list.size)) { page = it }
                 }

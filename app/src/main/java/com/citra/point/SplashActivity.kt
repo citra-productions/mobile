@@ -28,8 +28,10 @@ class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        paintWindow()
         setContent {
-            CitraTheme(false) {
+            val vm: AppViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            CitraTheme(vm.darkTheme, vm.english) {
                 SplashScreen {
                     startActivity(Intent(this@SplashActivity, MainActivity::class.java))
                     finish()

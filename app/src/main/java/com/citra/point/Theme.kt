@@ -4,6 +4,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.runtime.CompositionLocalProvider
 
 // ---- Design tokens dari Figma (colors/primary/*) ----
 val Navy = Color(0xFF1A3673)       // primary/500
@@ -38,5 +39,7 @@ val ColorScheme.pageBorder get() = if (isLight) Color(0xFFCED9FF) else outlineVa
 val ColorScheme.selectedOption get() = if (isLight) Color(0xFFE6EDFF) else primaryContainer
 
 @Composable
-fun CitraTheme(dark: Boolean, content: @Composable () -> Unit) =
-    MaterialTheme(colorScheme = if (dark) Dark else Light, content = content)
+fun CitraTheme(dark: Boolean, english: Boolean = false, content: @Composable () -> Unit) =
+    MaterialTheme(colorScheme = if (dark) Dark else Light) {
+        CompositionLocalProvider(LocalEnglish provides english, content = content)
+    }

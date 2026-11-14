@@ -13,6 +13,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 data class ProductCategory(val id: String, val name: String)
 data class Product(
@@ -68,6 +70,25 @@ class Prefs(private val ctx: Context) {
     suspend fun setHistory(list: List<String>) { ctx.citraStore.edit { it[HIST] = list.joinToString("\n") } }
 }
 
+object UiPrefs {
+    var favorites by mutableStateOf<List<Int>>(emptyList())
+    var dark by mutableStateOf(false)
+    var english by mutableStateOf(false)
+    var history by mutableStateOf<List<String>>(emptyList())
+    private var loaded = false
+
+    fun ensureLoaded(prefs: Prefs) {
+        if (loaded) return
+        loaded = true
+        runBlocking {
+            favorites = prefs.favorites.first()
+            dark = prefs.dark.first()
+            english = prefs.english.first()
+            history = prefs.history.first()
+        }
+    }
+}
+
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = Prefs(app)
 
@@ -76,16 +97,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var query by mutableStateOf("")
     var chip by mutableStateOf<String?>(null)
 
-    var favorites by mutableStateOf<List<Int>>(emptyList()); private set
-    var darkTheme by mutableStateOf(false); private set
-    var english by mutableStateOf(false); private set
-    var history by mutableStateOf<List<String>>(emptyList()); private set
+    val favorites: List<Int> get() = UiPrefs.favorites
+    val darkTheme: Boolean get() = UiPrefs.dark
+    val english: Boolean get() = UiPrefs.english
+    val history: List<String> get() = UiPrefs.history
 
     init {
-        viewModelScope.launch { prefs.favorites.collect { favorites = it } }
-        viewModelScope.launch { prefs.dark.collect { darkTheme = it } }
-        viewModelScope.launch { prefs.english.collect { english = it } }
-        viewModelScope.launch { prefs.history.collect { history = it } }
+        UiPrefs.ensureLoaded(prefs)
+        viewModelScope.launch { prefs.favorites.collect { UiPrefs.favorites = it } }
+        viewModelScope.launch { prefs.dark.collect { UiPrefs.dark = it } }
+        viewModelScope.launch { prefs.english.collect { UiPrefs.english = it } }
+        viewModelScope.launch { prefs.history.collect { UiPrefs.history = it } }
         load()
     }
 
